@@ -14,6 +14,8 @@
 <script type="module" src="https://cdnjs.cloudflare.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
 <!-- QR generation for cross-device AR hand-off -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+<!-- Supabase: storage + share database -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
   :root{
@@ -244,13 +246,24 @@
   }
   .close:hover{background:rgba(255,255,255,.06); color:var(--text)}
 
+  /* upload / loading state inside modal */
+  .loading{display:flex; flex-direction:column; align-items:center; gap:18px; padding:34px 0 26px}
+  .spinner{
+    width:44px; height:44px; border-radius:50%;
+    border:3px solid var(--stroke); border-top-color:var(--accent);
+    animation:spin .8s linear infinite;
+  }
+  .loading p{color:var(--muted); font-size:13px; margin:0}
+  .loading .pct{font-family:"Space Mono",monospace; color:var(--accent); font-size:12px}
+
   .toast{
     position:fixed; bottom:26px; left:50%; transform:translateX(-50%) translateY(20px);
     background:var(--accent); color:var(--accent-ink); font-weight:700; font-size:13px;
     padding:11px 20px; border-radius:999px; z-index:90; opacity:0; transition:.35s var(--ease);
-    box-shadow:0 10px 30px rgba(212,255,63,.4);
+    box-shadow:0 10px 30px rgba(212,255,63,.4); max-width:86vw; text-align:center;
   }
   .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+  .toast.err{background:#ff5d5d; color:#fff; box-shadow:0 10px 30px rgba(255,93,93,.4)}
 
   /* ---------- Animations ---------- */
   @keyframes drop{from{opacity:0; transform:translateY(-14px)} to{opacity:1; transform:none}}
@@ -356,12 +369,22 @@
 <div class="modal" id="modal">
   <div class="card">
     <button class="close" id="closeModal" aria-label="Tutup">✕</button>
-    <h3>Scan to view in AR</h3>
-    <p>Buka link ini di ponsel untuk menampilkan model dalam Augmented Reality.</p>
-    <div class="qr"><canvas id="qr"></canvas></div>
-    <div class="linkrow">
-      <input id="shareLink" readonly value="">
-      <button class="copy" id="copyBtn">Copy</button>
+
+    <!-- loading view -->
+    <div class="loading" id="loading" hidden>
+      <div class="spinner"></div>
+      <p id="loadingText">Mengunggah model…</p>
+    </div>
+
+    <!-- result view -->
+    <div id="cardBody">
+      <h3>Scan to view in AR</h3>
+      <p>Buka link ini di ponsel untuk menampilkan model dalam Augmented Reality.</p>
+      <div class="qr"><canvas id="qr"></canvas></div>
+      <div class="linkrow">
+        <input id="shareLink" readonly value="">
+        <button class="copy" id="copyBtn">Copy</button>
+      </div>
     </div>
   </div>
 </div>
@@ -369,6 +392,19 @@
 <div class="toast" id="toast">Tersalin ✓</div>
 
 <script>
+  /* ============================================================
+     SUPABASE CONFIG
+     ============================================================ */
+  const SUPABASE_URL = 'https://ogmtrdzimqlxhzomnnzl.supabase.co';
+  const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9nbXRyZHppbXFseGh6b21ubnpsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3MjI4ODgsImV4cCI6MjA5NjI5ODg4OH0.fXdfuU7iELLJC2ZJXrQMBq3YxZd2hRQc7Mi2TjZR7N8';
+  const BUCKET = 'models';   // Supabase Storage bucket (public)
+  const TABLE  = 'shares';   // Supabase table
+
+  const sb = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON) : null;
+
+  /* ============================================================
+     DOM refs
+     ============================================================ */
   const viewer   = document.getElementById('viewer');
   const empty    = document.getElementById('empty');
   const drop     = document.getElementById('drop');
@@ -379,9 +415,24 @@
   const badgeGlb = document.getElementById('badgeGlb');
   const badgeUsdz= document.getElementById('badgeUsdz');
 
+  /* ============================================================
+     State
+     ============================================================ */
+  let glbFile = null;          // File object yang di-upload user
+  let usdzFile = null;
+  let modelName = 'Untitled';
+  let shareUrl = null;         // cache link share supaya tidak upload ulang
+  let isShared = false;        // true bila halaman dibuka dari link ?id=
+
   const fmtSize = b => b < 1048576 ? (b/1024).toFixed(0)+' KB' : (b/1048576).toFixed(1)+' MB';
 
+  /* ============================================================
+     Load model into the viewer (local file preview)
+     ============================================================ */
   function loadGlb(file){
+    glbFile = file;
+    modelName = file.name.replace(/\.(glb|gltf)$/i,'');
+    shareUrl = null;                          // model baru → link lama tidak berlaku
     viewer.src = URL.createObjectURL(file);
     empty.classList.add('hide');
     arBtn.disabled = false; shareBtn.disabled = false;
@@ -390,6 +441,8 @@
     badgeGlb.classList.add('on');
   }
   function loadUsdz(file){
+    usdzFile = file;
+    shareUrl = null;
     viewer.setAttribute('ios-src', URL.createObjectURL(file));
     badgeUsdz.textContent = 'USDZ · ' + fmtSize(file.size);
     badgeUsdz.classList.add('on');
@@ -399,38 +452,150 @@
     const n = file.name.toLowerCase();
     if(n.endsWith('.glb') || n.endsWith('.gltf')) loadGlb(file);
     else if(n.endsWith('.usdz')) loadUsdz(file);
-    else flash('Format tidak didukung');
+    else flash('Format tidak didukung', true);
   }
 
   document.getElementById('glbInput').onchange  = e => e.target.files[0] && loadGlb(e.target.files[0]);
   document.getElementById('usdzInput').onchange = e => e.target.files[0] && loadUsdz(e.target.files[0]);
 
-  // Drag & drop
+  /* ---------- Drag & drop ---------- */
   ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e=>{e.preventDefault(); drop.classList.add('drag')}));
   ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e=>{e.preventDefault(); if(ev==='drop'||!drop.contains(e.relatedTarget)) drop.classList.remove('drag')}));
   drop.addEventListener('drop', e => { if(e.dataTransfer.files[0]) route(e.dataTransfer.files[0]); });
 
-  // AR
-  arBtn.onclick = () => { if(viewer.canActivateAR) viewer.activateAR(); else flash('AR didukung di perangkat mobile'); };
+  /* ---------- AR ---------- */
+  arBtn.onclick = () => { if(viewer.canActivateAR) viewer.activateAR(); else flash('AR didukung di perangkat mobile', true); };
 
-  // Share
-  const modal = document.getElementById('modal');
-  const qr = new QRious({ element: document.getElementById('qr'), size: 320, value: location.href, background:'#fff', foreground:'#0a0a0a' });
-  shareBtn.onclick = () => {
-    document.getElementById('shareLink').value = location.href;
-    qr.value = location.href;
+  /* ============================================================
+     SUPABASE: upload + create share record
+     ============================================================ */
+  function genId(){
+    const raw = (crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36)+Math.random().toString(36)));
+    return raw.replace(/[^a-z0-9]/gi,'').slice(0,12);
+  }
+
+  async function uploadToStorage(file, path){
+    const { error } = await sb.storage.from(BUCKET).upload(path, file, {
+      contentType: file.type || 'application/octet-stream',
+      upsert: true
+    });
+    if(error) throw error;
+    const { data } = sb.storage.from(BUCKET).getPublicUrl(path);
+    return data.publicUrl;
+  }
+
+  async function createShare(){
+    if(!sb) throw new Error('Supabase belum siap (cek koneksi internet).');
+
+    const id = genId();
+    let glbUrl = null, usdzUrl = null;
+
+    if(glbFile){
+      setLoading('Mengunggah GLB…');
+      glbUrl = await uploadToStorage(glbFile, id + '/model.glb');
+    }
+    if(usdzFile){
+      setLoading('Mengunggah USDZ…');
+      usdzUrl = await uploadToStorage(usdzFile, id + '/model.usdz');
+    }
+
+    setLoading('Menyimpan link…');
+    const { error } = await sb.from(TABLE).insert({
+      id, name: modelName, glb_url: glbUrl, usdz_url: usdzUrl
+    });
+    if(error) throw error;
+
+    return location.origin + location.pathname + '?id=' + id;
+  }
+
+  /* ============================================================
+     SUPABASE: load a shared model from ?id=
+     ============================================================ */
+  async function loadShared(id){
+    if(!sb){ flash('Supabase belum siap', true); return; }
+    statusTx.textContent = 'Memuat…';
+    const { data, error } = await sb.from(TABLE).select('*').eq('id', id).maybeSingle();
+    if(error || !data){ flash('Model tidak ditemukan', true); statusTx.textContent='No model'; return; }
+
+    modelName = data.name || 'Shared model';
+    if(data.glb_url){
+      viewer.src = data.glb_url;
+      badgeGlb.textContent = 'GLB · shared'; badgeGlb.classList.add('on');
+      arBtn.disabled = false;
+    }
+    if(data.usdz_url){
+      viewer.setAttribute('ios-src', data.usdz_url);
+      badgeUsdz.textContent = 'USDZ · shared'; badgeUsdz.classList.add('on');
+    }
+    empty.classList.add('hide');
+    status.classList.add('live'); statusTx.textContent = modelName.slice(0,18);
+    shareBtn.disabled = false;
+    shareUrl = location.href;     // sudah ter-share → tinggal tampilkan
+    isShared = true;
+  }
+
+  /* ============================================================
+     Share modal
+     ============================================================ */
+  const modal      = document.getElementById('modal');
+  const cardBody   = document.getElementById('cardBody');
+  const loadingBox = document.getElementById('loading');
+  const loadingTx  = document.getElementById('loadingText');
+  const qr = new QRious({ element: document.getElementById('qr'), size: 320, background:'#fff', foreground:'#0a0a0a', value: location.href });
+
+  function setLoading(msg){
+    loadingTx.textContent = msg;
+    loadingBox.hidden = false;
+    cardBody.hidden = true;
+  }
+  function showResult(url){
+    loadingBox.hidden = true;
+    cardBody.hidden = false;
+    document.getElementById('shareLink').value = url;
+    qr.value = url;
+  }
+
+  shareBtn.onclick = async () => {
     modal.classList.add('show');
+
+    // sudah punya link (model lama / dibuka dari share) → langsung tampilkan
+    if(shareUrl){ showResult(shareUrl); return; }
+
+    setLoading('Mengunggah model…');
+    try {
+      shareUrl = await createShare();
+      showResult(shareUrl);
+    } catch(err){
+      modal.classList.remove('show');
+      console.error(err);
+      flash('Gagal share: ' + (err.message || 'cek setup Supabase'), true);
+    }
   };
+
   document.getElementById('closeModal').onclick = () => modal.classList.remove('show');
   modal.addEventListener('click', e => { if(e.target===modal) modal.classList.remove('show'); });
   document.getElementById('copyBtn').onclick = () => {
-    navigator.clipboard.writeText(location.href).then(()=>flash('Tersalin ✓'));
+    const url = document.getElementById('shareLink').value || location.href;
+    navigator.clipboard.writeText(url).then(()=>flash('Tersalin ✓'));
   };
 
-  // Toast
+  /* ============================================================
+     Toast
+     ============================================================ */
   const toast = document.getElementById('toast');
   let t;
-  function flash(msg){ toast.textContent = msg; toast.classList.add('show'); clearTimeout(t); t=setTimeout(()=>toast.classList.remove('show'),1800); }
+  function flash(msg, isErr){
+    toast.textContent = msg;
+    toast.classList.toggle('err', !!isErr);
+    toast.classList.add('show');
+    clearTimeout(t); t = setTimeout(()=>toast.classList.remove('show'), 2400);
+  }
+
+  /* ============================================================
+     Boot: jika URL punya ?id= → muat model yang di-share
+     ============================================================ */
+  const sharedId = new URLSearchParams(location.search).get('id');
+  if(sharedId) loadShared(sharedId);
 </script>
 </body>
 </html>
