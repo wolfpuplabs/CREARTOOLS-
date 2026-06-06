@@ -1,45 +1,75 @@
+html
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebAR Viewer</title>
+    <title>WebAR Viewer Workspace</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
     <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
-    <!-- Supabase JS client (UMD build -> exposes window.supabase) -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <img src="logo.png" alt="Logo" class="logo">
+    <div class="app-container">
+        <header class="app-header">
+            <div class="logo-placeholder">AR</div> 
             <h1>WebAR Viewer</h1>
         </header>
-        <main>
-            <model-viewer id="model" alt="A 3D model" ar ar-modes="scene-viewer webxr quick-look" camera-controls auto-rotate autoplay></model-viewer>
 
-            <div class="upload-container">
-                <label for="glbUpload">Upload GLB Model:</label>
-                <input type="file" id="glbUpload" accept=".glb, .gltf"/>
-            </div>
-            <div class="upload-container">
-                <label for="usdzUpload">Upload USDZ Model:</label>
-                <input type="file" id="usdzUpload" accept=".usdz"/>
-            </div>
-
-            <div class="upload-container">
-                <button id="shareBtn" disabled>Share Model</button>
-            </div>
-
-            <p id="status" class="status"></p>
-
-            <div id="shareBox" class="share-box" hidden>
-                <label for="shareLink">Shareable link:</label>
-                <div class="share-row">
-                    <input type="text" id="shareLink" readonly>
-                    <button id="copyBtn">Copy</button>
+        <main class="workspace">
+            <section class="viewer-panel">
+                <div class="viewer-wrapper">
+                    <model-viewer id="model" alt="A 3D model" ar ar-modes="scene-viewer webxr quick-look" camera-controls auto-rotate autoplay shadow-intensity="1"></model-viewer>
                 </div>
-            </div>
+            </section>
+
+            <section class="controls-panel">
+                <div class="panel-header">
+                    <h2>Model Setup</h2>
+                    <p>Upload your 3D files to preview and generate an AR share link.</p>
+                </div>
+
+                <div class="upload-group">
+                    <label class="custom-file-upload" for="glbUpload">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                        <div class="upload-text">
+                            <span class="title">Upload GLB/GLTF</span>
+                            <span class="subtitle" id="glbFileText">Essential for Android & Web</span>
+                        </div>
+                    </label>
+                    <input type="file" id="glbUpload" accept=".glb, .gltf"/>
+                </div>
+
+                <div class="upload-group">
+                    <label class="custom-file-upload" for="usdzUpload">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                        <div class="upload-text">
+                            <span class="title">Upload USDZ</span>
+                            <span class="subtitle" id="usdzFileText">Optional: Enables iOS AR</span>
+                        </div>
+                    </label>
+                    <input type="file" id="usdzUpload" accept=".usdz"/>
+                </div>
+
+                <div class="action-group">
+                    <button id="shareBtn" class="primary-btn" disabled>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+                        Generate Share Link
+                    </button>
+                    <p id="status" class="status-msg"></p>
+                </div>
+
+                <div id="shareBox" class="share-box" hidden>
+                    <label for="shareLink">Your AR Share Link</label>
+                    <div class="share-row">
+                        <input type="text" id="shareLink" readonly>
+                        <button id="copyBtn" class="secondary-btn">Copy</button>
+                    </div>
+                </div>
+            </section>
         </main>
     </div>
     <script src="scripts.js"></script>
