@@ -1,116 +1,264 @@
+css
+:root {
+    --primary-color: #2563eb;
+    --primary-hover: #1d4ed8;
+    --bg-color: #f8fafc;
+    --surface-color: #ffffff;
+    --text-main: #0f172a;
+    --text-muted: #64748b;
+    --border-color: #e2e8f0;
+    --error-color: #ef4444;
+    --success-color: #10b981;
+    --radius: 12px;
+}
+
 body {
-    font-family: Arial, Montserrat;
+    font-family: 'Inter', sans-serif;
     margin: 0;
+    padding: 0;
+    background-color: var(--bg-color);
+    color: var(--text-main);
     display: flex;
     justify-content: center;
-    align-items: center;
     min-height: 100vh;
-    background-color: #f0f0f0;
-    padding: 20px;
-    box-sizing: border-box;
 }
 
-.container {
+.app-container {
     width: 100%;
-    max-width: 800px;
-    text-align: center;
+    max-width: 1200px;
+    padding: 2rem;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
 }
 
-header {
-    margin-bottom: 20px;
+/* Header */
+.app-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
 }
 
-.logo {
-    width: 150px;
-    height: auto;
-    margin-bottom: 10px;
-}
-
-main {
-    background: white;
-    padding: 20px;
+.logo-placeholder {
+    background: var(--primary-color);
+    color: white;
+    font-weight: 700;
+    width: 40px;
+    height: 40px;
     border-radius: 8px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+}
+
+.app-header h1 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 0;
+    color: var(--text-main);
+}
+
+/* Main Workspace */
+.workspace {
+    display: grid;
+    grid-template-columns: 1fr 400px;
+    gap: 2rem;
+    align-items: start;
+}
+
+/* Viewer Panel */
+.viewer-panel {
+    background: var(--surface-color);
+    border-radius: var(--radius);
+    padding: 1rem;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    border: 1px solid var(--border-color);
+}
+
+.viewer-wrapper {
+    position: relative;
+    width: 100%;
+    padding-top: 75%; /* 4:3 Aspect Ratio */
+    background: radial-gradient(circle at center, #f1f5f9 0%, #e2e8f0 100%);
+    border-radius: 8px;
+    overflow: hidden;
 }
 
 model-viewer {
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
-    height: 400px;
-    background-color: #eee;
-    margin-bottom: 20px;
+    height: 100%;
+    --poster-color: transparent;
 }
 
-.upload-container {
-    margin-top: 10px;
+/* Controls Panel */
+.controls-panel {
+    background: var(--surface-color);
+    border-radius: var(--radius);
+    padding: 2rem;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    border: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
 }
 
+.panel-header h2 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.25rem;
+}
+
+.panel-header p {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+/* Upload Inputs */
 input[type="file"] {
-    display: inline-block;
-    padding: 10px;
-    font-size: 16px;
-    max-width: 100%;
+    display: none;
 }
 
-button {
-    padding: 10px 20px;
-    font-size: 16px;
+.upload-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.custom-file-upload {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.25rem;
+    background: #f8fafc;
+    border: 2px dashed var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.custom-file-upload:hover {
+    border-color: var(--primary-color);
+    background: #eff6ff;
+}
+
+.custom-file-upload svg {
+    color: var(--primary-color);
+}
+
+.upload-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.upload-text .title {
+    font-weight: 500;
+    font-size: 0.95rem;
+    color: var(--text-main);
+}
+
+.upload-text .subtitle {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+/* Buttons */
+.primary-btn {
+    width: 100%;
+    padding: 0.875rem;
+    font-size: 1rem;
+    font-weight: 600;
     border: none;
-    border-radius: 6px;
-    background-color: #2d7ef7;
+    border-radius: 8px;
+    background-color: var(--primary-color);
     color: #fff;
     cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    transition: background-color 0.2s;
 }
 
-button:disabled {
-    background-color: #b0b0b0;
+.primary-btn:hover:not(:disabled) {
+    background-color: var(--primary-hover);
+}
+
+.primary-btn:disabled {
+    background-color: #94a3b8;
     cursor: not-allowed;
+    opacity: 0.7;
 }
 
-button:not(:disabled):hover {
-    background-color: #1b63d1;
+.secondary-btn {
+    padding: 0.75rem 1.25rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background-color: white;
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.2s;
 }
 
-.status {
+.secondary-btn:hover {
+    background-color: #f1f5f9;
+}
+
+/* Status & Share Box */
+.status-msg {
+    margin: 0.75rem 0 0;
+    font-size: 0.875rem;
+    text-align: center;
     min-height: 20px;
-    margin: 12px 0 0;
-    font-size: 14px;
-    color: #555;
 }
 
 .share-box {
-    margin-top: 16px;
-    text-align: left;
+    margin-top: 0.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.share-box label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-main);
 }
 
 .share-row {
     display: flex;
-    gap: 8px;
-    margin-top: 6px;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
 }
 
 #shareLink {
     flex: 1;
-    padding: 10px;
-    font-size: 14px;
-    border: 1px solid #ccc;
+    padding: 0.75rem;
+    font-size: 0.875rem;
+    border: 1px solid var(--border-color);
     border-radius: 6px;
+    background: #f8fafc;
+    color: var(--text-main);
+    outline: none;
 }
 
-#copyBtn {
-    white-space: nowrap;
+#shareLink:focus {
+    border-color: var(--primary-color);
 }
 
-@media (max-width: 600px) {
-    .logo {
-        width: 120px;
+/* Responsive */
+@media (max-width: 900px) {
+    .workspace {
+        grid-template-columns: 1fr;
     }
-
-    model-viewer {
-        height: 300px;
-    }
-
-    input[type="file"] {
-        width: 100%;
-        box-sizing: border-box;
+    
+    .app-container {
+        padding: 1rem;
     }
 }
