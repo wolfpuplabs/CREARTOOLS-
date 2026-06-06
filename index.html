@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Creartor — WebAR Viewer</title>
+
+<!-- Distinctive type pairing: Syne (display) · Hanken Grotesk (UI) · Space Mono (technical labels) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Hanken+Grotesk:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+<!-- model-viewer: the 3D/AR engine -->
+<script type="module" src="https://cdnjs.cloudflare.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
+<!-- QR generation for cross-device AR hand-off -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+
+<style>
+  :root{
+    --bg:#08090c;
+    --bg-2:#0c0e13;
+    --panel:rgba(22,25,32,.62);
+    --panel-solid:#13161d;
+    --stroke:rgba(255,255,255,.08);
+    --stroke-strong:rgba(255,255,255,.16);
+    --text:#eef1f5;
+    --muted:#8b93a3;
+    --faint:#5a6173;
+    --accent:#d4ff3f;     /* electric lime — active / scan / AR */
+    --accent-dim:#9fc41f;
+    --accent-ink:#101400;
+    --radius:18px;
+    --ease:cubic-bezier(.22,1,.36,1);
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:"Hanken Grotesk",sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ---------- Atmosphere: studio spotlight + dot grid ---------- */
+  .scene{
+    position:fixed; inset:0;
+    background:
+      radial-gradient(120% 80% at 50% -10%, rgba(212,255,63,.10), transparent 55%),
+      radial-gradient(90% 90% at 50% 120%, rgba(60,80,120,.18), transparent 60%),
+      var(--bg);
+  }
+  .scene::before{
+    content:""; position:absolute; inset:0;
+    background-image:
+      radial-gradient(rgba(255,255,255,.05) 1px, transparent 1px);
+    background-size:26px 26px;
+    mask-image:radial-gradient(80% 70% at 50% 40%, #000 30%, transparent 80%);
+    pointer-events:none;
+  }
+  .grain{
+    position:fixed; inset:0; pointer-events:none; opacity:.04; z-index:60;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* ---------- App shell ---------- */
+  .app{
+    position:relative; z-index:10;
+    height:100%;
+    display:grid;
+    grid-template-rows:auto 1fr auto;
+    padding:18px clamp(14px,3vw,34px) 22px;
+  }
+
+  /* ---------- Top bar ---------- */
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    gap:16px; animation:drop .7s var(--ease) both;
+  }
+  .brand{display:flex; align-items:center; gap:13px}
+  .mark{
+    width:42px; height:42px; border-radius:12px;
+    display:grid; place-items:center; flex:none;
+    background:linear-gradient(145deg,#1a1e26,#0b0d12);
+    border:1px solid var(--stroke-strong);
+    box-shadow:0 8px 24px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06);
+  }
+  .mark svg{width:24px; height:24px}
+  .wordmark{line-height:1}
+  .wordmark b{
+    font-family:"Syne",sans-serif; font-weight:800; font-size:19px;
+    letter-spacing:-.02em; display:block;
+  }
+  .wordmark span{
+    font-family:"Space Mono",monospace; font-size:10.5px;
+    letter-spacing:.34em; text-transform:uppercase; color:var(--muted);
+  }
+  .status{
+    display:flex; align-items:center; gap:9px;
+    font-family:"Space Mono",monospace; font-size:11px; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--muted);
+    background:var(--panel); backdrop-filter:blur(14px);
+    border:1px solid var(--stroke); border-radius:999px;
+    padding:9px 15px;
+  }
+  .dot{width:7px; height:7px; border-radius:50%; background:var(--faint); transition:.4s}
+  .status.live .dot{background:var(--accent); box-shadow:0 0 0 0 rgba(212,255,63,.6); animation:pulse 2s infinite}
+
+  /* ---------- Stage / viewport ---------- */
+  .stage{
+    position:relative; min-height:0;
+    margin:18px 0;
+    display:grid; place-items:center;
+    animation:fade .9s var(--ease) .1s both;
+  }
+  .viewport{
+    position:relative;
+    width:min(100%, 980px); height:100%;
+    border-radius:26px;
+    background:
+      radial-gradient(70% 120% at 50% 115%, rgba(212,255,63,.07), transparent 60%),
+      linear-gradient(180deg, rgba(255,255,255,.025), rgba(0,0,0,.18));
+    border:1px solid var(--stroke);
+    overflow:hidden;
+    transition:border-color .3s, box-shadow .3s;
+  }
+  .viewport.drag{
+    border-color:var(--accent);
+    box-shadow:0 0 0 4px rgba(212,255,63,.14), 0 30px 80px rgba(0,0,0,.5);
+  }
+  model-viewer{width:100%; height:100%; --poster-color:transparent; background:transparent}
+
+  /* viewfinder corner brackets */
+  .frame{position:absolute; inset:18px; pointer-events:none; z-index:4}
+  .frame i{position:absolute; width:24px; height:24px; border:2px solid var(--stroke-strong)}
+  .frame i:nth-child(1){top:0;left:0;border-right:0;border-bottom:0;border-radius:6px 0 0 0}
+  .frame i:nth-child(2){top:0;right:0;border-left:0;border-bottom:0;border-radius:0 6px 0 0}
+  .frame i:nth-child(3){bottom:0;left:0;border-right:0;border-top:0;border-radius:0 0 0 6px}
+  .frame i:nth-child(4){bottom:0;right:0;border-left:0;border-top:0;border-radius:0 0 6px 0}
+
+  /* metadata badges */
+  .badges{position:absolute; top:30px; left:30px; display:flex; gap:8px; z-index:5}
+  .badge{
+    font-family:"Space Mono",monospace; font-size:10.5px; letter-spacing:.08em;
+    padding:6px 11px; border-radius:8px; text-transform:uppercase;
+    background:rgba(8,9,12,.7); backdrop-filter:blur(8px);
+    border:1px solid var(--stroke); color:var(--muted);
+  }
+  .badge.on{color:var(--accent-ink); background:var(--accent); border-color:var(--accent)}
+
+  /* empty state */
+  .empty{
+    position:absolute; inset:0; z-index:3;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:18px; text-align:center; padding:24px;
+    transition:opacity .4s, transform .4s;
+  }
+  .empty.hide{opacity:0; transform:scale(.97); pointer-events:none}
+  .empty .orb{
+    width:108px; height:108px; border-radius:50%;
+    display:grid; place-items:center; position:relative;
+    background:radial-gradient(circle at 50% 35%, rgba(212,255,63,.18), transparent 70%);
+  }
+  .empty .orb::after{
+    content:""; position:absolute; inset:0; border-radius:50%;
+    border:1px dashed var(--stroke-strong); animation:spin 24s linear infinite;
+  }
+  .empty .orb svg{width:42px; height:42px; opacity:.9}
+  .empty h2{
+    font-family:"Syne",sans-serif; font-weight:700; font-size:clamp(20px,3vw,27px);
+    letter-spacing:-.02em;
+  }
+  .empty p{color:var(--muted); font-size:14px; max-width:330px; line-height:1.55}
+  .empty kbd{
+    font-family:"Space Mono",monospace; font-size:12px; color:var(--accent);
+    border:1px solid var(--stroke-strong); border-radius:6px; padding:2px 7px;
+  }
+
+  /* ---------- Bottom control dock ---------- */
+  .dock-wrap{display:flex; justify-content:center; animation:drop .7s var(--ease) .2s both}
+  .dock{
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:center;
+    background:var(--panel); backdrop-filter:blur(20px) saturate(140%);
+    border:1px solid var(--stroke); border-radius:999px;
+    padding:9px; box-shadow:0 18px 50px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.05);
+  }
+  .btn{
+    display:inline-flex; align-items:center; gap:9px;
+    font-family:"Hanken Grotesk",sans-serif; font-weight:600; font-size:14px;
+    color:var(--text); cursor:pointer; border:none;
+    padding:13px 18px; border-radius:999px; position:relative;
+    background:transparent; transition:.25s var(--ease); white-space:nowrap;
+  }
+  .btn svg{width:18px; height:18px; flex:none}
+  .btn:hover{background:rgba(255,255,255,.06)}
+  .btn .sub{font-family:"Space Mono",monospace; font-size:10px; color:var(--faint); letter-spacing:.06em}
+  .btn-primary{
+    background:var(--accent); color:var(--accent-ink); font-weight:700;
+    box-shadow:0 6px 22px rgba(212,255,63,.28);
+  }
+  .btn-primary:hover{background:#e2ff6b; transform:translateY(-2px); box-shadow:0 12px 30px rgba(212,255,63,.4)}
+  .btn-primary[disabled]{opacity:.4; pointer-events:none; box-shadow:none}
+  .btn[disabled]{opacity:.4; pointer-events:none}
+  .sep{width:1px; height:30px; background:var(--stroke); margin:0 3px}
+  input[type=file]{display:none}
+
+  /* ---------- Share modal ---------- */
+  .modal{
+    position:fixed; inset:0; z-index:80; display:none;
+    place-items:center; padding:24px;
+    background:rgba(4,5,7,.7); backdrop-filter:blur(6px);
+  }
+  .modal.show{display:grid; animation:fade .3s ease}
+  .card{
+    width:min(380px,100%); background:var(--panel-solid);
+    border:1px solid var(--stroke-strong); border-radius:24px;
+    padding:28px; text-align:center; position:relative;
+    box-shadow:0 30px 80px rgba(0,0,0,.6); animation:pop .4s var(--ease);
+  }
+  .card h3{font-family:"Syne",sans-serif; font-weight:700; font-size:21px; letter-spacing:-.02em}
+  .card p{color:var(--muted); font-size:13px; margin:8px 0 20px; line-height:1.5}
+  .qr{width:184px; height:184px; margin:0 auto 20px; background:#fff; border-radius:16px; padding:14px; display:grid; place-items:center}
+  .qr canvas{width:100%!important; height:100%!important; border-radius:6px}
+  .linkrow{
+    display:flex; gap:8px; align-items:center;
+    background:rgba(0,0,0,.4); border:1px solid var(--stroke);
+    border-radius:12px; padding:5px 5px 5px 14px;
+  }
+  .linkrow input{
+    flex:1; background:transparent; border:none; color:var(--muted);
+    font-family:"Space Mono",monospace; font-size:12px; outline:none; min-width:0;
+  }
+  .copy{
+    background:var(--accent); color:var(--accent-ink); border:none; cursor:pointer;
+    font-family:"Hanken Grotesk"; font-weight:700; font-size:13px;
+    padding:9px 15px; border-radius:9px; transition:.2s;
+  }
+  .copy:hover{background:#e2ff6b}
+  .close{
+    position:absolute; top:16px; right:16px; width:32px; height:32px;
+    border-radius:50%; border:1px solid var(--stroke); background:transparent;
+    color:var(--muted); cursor:pointer; font-size:16px; transition:.2s;
+  }
+  .close:hover{background:rgba(255,255,255,.06); color:var(--text)}
+
+  .toast{
+    position:fixed; bottom:26px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:var(--accent); color:var(--accent-ink); font-weight:700; font-size:13px;
+    padding:11px 20px; border-radius:999px; z-index:90; opacity:0; transition:.35s var(--ease);
+    box-shadow:0 10px 30px rgba(212,255,63,.4);
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+
+  /* ---------- Animations ---------- */
+  @keyframes drop{from{opacity:0; transform:translateY(-14px)} to{opacity:1; transform:none}}
+  @keyframes fade{from{opacity:0} to{opacity:1}}
+  @keyframes pop{from{opacity:0; transform:scale(.9) translateY(10px)} to{opacity:1; transform:none}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(212,255,63,.6)} 70%{box-shadow:0 0 0 8px rgba(212,255,63,0)} 100%{box-shadow:0 0 0 0 rgba(212,255,63,0)}}
+
+  @media (max-width:560px){
+    .badges{top:auto; bottom:26px; left:50%; transform:translateX(-50%)}
+    .frame{inset:12px}
+    .btn .sub{display:none}
+    .wordmark span{letter-spacing:.2em}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+</head>
+<body>
+<div class="scene"></div>
+<div class="grain"></div>
+
+<div class="app">
+  <!-- TOP BAR -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none">
+          <path d="M12 2 4 6.5v9L12 22l8-6.5v-9L12 2Z" stroke="#d4ff3f" stroke-width="1.4" stroke-linejoin="round"/>
+          <path d="M4 6.5 12 11l8-4.5M12 11v11" stroke="#d4ff3f" stroke-width="1.4" stroke-linejoin="round" opacity=".55"/>
+        </svg>
+      </div>
+      <div class="wordmark">
+        <b>Creartor</b>
+        <span>WebAR Viewer</span>
+      </div>
+    </div>
+    <div class="status" id="status">
+      <span class="dot"></span><span id="statusText">No model</span>
+    </div>
+  </header>
+
+  <!-- STAGE -->
+  <main class="stage">
+    <div class="viewport" id="drop">
+      <div class="frame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <div class="badges">
+        <span class="badge" id="badgeGlb">GLB · —</span>
+        <span class="badge" id="badgeUsdz">USDZ · —</span>
+      </div>
+
+      <model-viewer id="viewer"
+        camera-controls auto-rotate
+        ar ar-modes="webxr scene-viewer quick-look"
+        shadow-intensity="1" exposure="1"
+        environment-image="neutral"
+        interaction-prompt="none">
+      </model-viewer>
+
+      <div class="empty" id="empty">
+        <div class="orb" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none">
+            <path d="M12 3 3 8v8l9 5 9-5V8l-9-5Z" stroke="#d4ff3f" stroke-width="1.3" stroke-linejoin="round"/>
+            <path d="M3 8l9 5 9-5M12 13v8" stroke="#d4ff3f" stroke-width="1.3" opacity=".5" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <h2>Drop a 3D model to begin</h2>
+        <p>Tarik &amp; lepas file <kbd>.glb</kbd> di sini, atau gunakan tombol di bawah. Tambahkan <kbd>.usdz</kbd> untuk AR di perangkat iOS.</p>
+      </div>
+    </div>
+  </main>
+
+  <!-- DOCK -->
+  <div class="dock-wrap">
+    <div class="dock">
+      <label class="btn">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 16V4m0 0L8 8m4-4 4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Upload GLB<span class="sub">android · web</span></span>
+        <input type="file" id="glbInput" accept=".glb,model/gltf-binary">
+      </label>
+
+      <label class="btn">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 16V4m0 0L8 8m4-4 4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Upload USDZ<span class="sub">apple · ios</span></span>
+        <input type="file" id="usdzInput" accept=".usdz,model/vnd.usdz+zip">
+      </label>
+
+      <div class="sep"></div>
+
+      <button class="btn btn-primary" id="arBtn" disabled>
+        <svg viewBox="0 0 24 24" fill="none"><path d="M3 8V6a2 2 0 0 1 2-2h2M17 4h2a2 2 0 0 1 2 2v2M21 16v2a2 2 0 0 1-2 2h-2M7 20H5a2 2 0 0 1-2-2v-2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M12 9 8.5 11v4L12 17l3.5-2v-4L12 9Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+        View in AR
+      </button>
+
+      <button class="btn" id="shareBtn" disabled>
+        <svg viewBox="0 0 24 24" fill="none"><path d="M16 8a3 3 0 1 0-2.83-4M8 12a3 3 0 1 0 0 .01M16 16a3 3 0 1 0-2.83 4M8.6 13.5l6.8 3.9M15.4 6.6 8.6 10.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Share
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- SHARE MODAL -->
+<div class="modal" id="modal">
+  <div class="card">
+    <button class="close" id="closeModal" aria-label="Tutup">✕</button>
+    <h3>Scan to view in AR</h3>
+    <p>Buka link ini di ponsel untuk menampilkan model dalam Augmented Reality.</p>
+    <div class="qr"><canvas id="qr"></canvas></div>
+    <div class="linkrow">
+      <input id="shareLink" readonly value="">
+      <button class="copy" id="copyBtn">Copy</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast">Tersalin ✓</div>
+
+<script>
+  const viewer   = document.getElementById('viewer');
+  const empty    = document.getElementById('empty');
+  const drop     = document.getElementById('drop');
+  const arBtn    = document.getElementById('arBtn');
+  const shareBtn = document.getElementById('shareBtn');
+  const status   = document.getElementById('status');
+  const statusTx = document.getElementById('statusText');
+  const badgeGlb = document.getElementById('badgeGlb');
+  const badgeUsdz= document.getElementById('badgeUsdz');
+
+  const fmtSize = b => b < 1048576 ? (b/1024).toFixed(0)+' KB' : (b/1048576).toFixed(1)+' MB';
+
+  function loadGlb(file){
+    viewer.src = URL.createObjectURL(file);
+    empty.classList.add('hide');
+    arBtn.disabled = false; shareBtn.disabled = false;
+    status.classList.add('live'); statusTx.textContent = file.name.slice(0,18);
+    badgeGlb.textContent = 'GLB · ' + fmtSize(file.size);
+    badgeGlb.classList.add('on');
+  }
+  function loadUsdz(file){
+    viewer.setAttribute('ios-src', URL.createObjectURL(file));
+    badgeUsdz.textContent = 'USDZ · ' + fmtSize(file.size);
+    badgeUsdz.classList.add('on');
+    shareBtn.disabled = false;
+  }
+  function route(file){
+    const n = file.name.toLowerCase();
+    if(n.endsWith('.glb') || n.endsWith('.gltf')) loadGlb(file);
+    else if(n.endsWith('.usdz')) loadUsdz(file);
+    else flash('Format tidak didukung');
+  }
+
+  document.getElementById('glbInput').onchange  = e => e.target.files[0] && loadGlb(e.target.files[0]);
+  document.getElementById('usdzInput').onchange = e => e.target.files[0] && loadUsdz(e.target.files[0]);
+
+  // Drag & drop
+  ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e=>{e.preventDefault(); drop.classList.add('drag')}));
+  ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e=>{e.preventDefault(); if(ev==='drop'||!drop.contains(e.relatedTarget)) drop.classList.remove('drag')}));
+  drop.addEventListener('drop', e => { if(e.dataTransfer.files[0]) route(e.dataTransfer.files[0]); });
+
+  // AR
+  arBtn.onclick = () => { if(viewer.canActivateAR) viewer.activateAR(); else flash('AR didukung di perangkat mobile'); };
+
+  // Share
+  const modal = document.getElementById('modal');
+  const qr = new QRious({ element: document.getElementById('qr'), size: 320, value: location.href, background:'#fff', foreground:'#0a0a0a' });
+  shareBtn.onclick = () => {
+    document.getElementById('shareLink').value = location.href;
+    qr.value = location.href;
+    modal.classList.add('show');
+  };
+  document.getElementById('closeModal').onclick = () => modal.classList.remove('show');
+  modal.addEventListener('click', e => { if(e.target===modal) modal.classList.remove('show'); });
+  document.getElementById('copyBtn').onclick = () => {
+    navigator.clipboard.writeText(location.href).then(()=>flash('Tersalin ✓'));
+  };
+
+  // Toast
+  const toast = document.getElementById('toast');
+  let t;
+  function flash(msg){ toast.textContent = msg; toast.classList.add('show'); clearTimeout(t); t=setTimeout(()=>toast.classList.remove('show'),1800); }
+</script>
+</body>
+</html>
